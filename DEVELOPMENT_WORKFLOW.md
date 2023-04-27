@@ -381,4 +381,165 @@ public class MeasurementRepository {
 }
 ```
 
+### Step 2 - Wire it up
 
+If you noticed we have developed a new feature without touching the rest of the application, this of this like a LEGO block
+so now all you have to do is plug this lego into the application circuit. This is one of the benefits of TDD, it makes
+the code modular.
+
+The wire up happens in the orchestrator which happens to be the `Weather` class, below is the test
+```java
+@Test
+public void currentTemperatureInCelsiusShouldPersistTemperatureInformationWhenPostgresUrlIsSetInEnvironment() {
+    WeatherAPI weatherAPI = mock(WeatherAPI.class);
+    MeasurementRepository measurementRepository = mock(MeasurementRepository.class);
+    Function<String, MeasurementRepository> measurementRepositorySupplier = (String jdbcUrl) -> measurementRepository;
+    Weather weather = new Weather(weatherAPI, measurementRepositorySupplier);
+    when(weatherAPI.getCurrentWeather("chennai")).thenReturn(new CurrentWeather(30));
+    System.setProperty("POSTGRES_JDBC_URL", "someURL");
+
+    weather.currentTemperatureInCelsius("chennai");
+
+    verify(measurementRepository).saveMeasurement(any(TemperatureMeasurement.class));
+}
+```
+
+if you notice above the test has nudged us to make the dependency to measurement repository a lazy one i.e. we will only
+construct this dependency if `POSTGRES_JDBC_URL` environment variable is set, below is the implementation for the above
+test
+
+```java
+public Optional<Integer> currentTemperatureInCelsius(String location) {
+    if(location == null || location.equals("")) {
+        return Optional.empty();
+    }
+    CurrentWeather currentWeather = weatherAPI.getCurrentWeather(location);
+    String postgresJdbcUrl = getPostgresJdbcUrl();
+    if (!postgresJdbcUrl.isEmpty()) {
+        MeasurementRepository measurementRepository = measurementRepositorySupplier.apply(postgresJdbcUrl);
+        measurementRepository.saveMeasurement(new TemperatureMeasurement(ZonedDateTime.now(), currentWeather.getTemperatureInCelsius()));
+    }
+    return Optional.of(currentWeather.getTemperatureInCelsius());
+}
+
+private String getPostgresJdbcUrl() {
+    String postgresJdbcUrl = System.getProperty("POSTGRES_JDBC_URL", System.getenv("POSTGRES_JDBC_URL"));
+    return Optional.ofNullable(postgresJdbcUrl).orElse("");
+}
+```
+
+On to the last wire up, which is in the console app
+
+```xml
+Weather weather = new Weather(new WttrClient("http://wttr.in"), () -> new MeasurementRepository());
+```
+
+now we uncover the interesting integration issue, we cannot instantiate measurement repository here! so lets refactor our
+wire up implementation and simplify it and also if we pass in the string and perform conditional object construction
+then we cannot mock it! So what is the answer?
+
+The core of the problem is this good-looking constructor which by definition has to give an option 
+
+```java
+public MeasurementRepository(String jdbcUrl) {
+    this.jdbi = Jdbi.create(jdbcUrl);
+}
+```
+
+what if we change this into a function and make the construction optional?
+
+Let's write a test first
+
+```java
+public class MeasurementRepositoryConstructionTest {
+    @ParameterizedTest
+    @NullAndEmptySource
+    public void fromJdbcUrlShouldReturnEmptyOptionalIfUrlValueIsNullOrEmpty(String value) {
+        Optional<MeasurementRepository> measurementRepository = MeasurementRepository.fromJdbcUrl(value);
+
+        assertEquals(Optional.empty(), measurementRepository);
+    }
+
+    @Test
+    public void fromJdbcUrlShouldReturnInstanceIf() {
+        Optional<MeasurementRepository> measurementRepository = MeasurementRepository.fromJdbcUrl("value");
+
+        assertTrue(measurementRepository.isPresent());
+    }
+}
+```
+
+```java
+public static Optional<MeasurementRepository> fromJdbcUrl(String jdbcUrl) {
+    if(jdbcUrl == null || jdbcUrl.isEmpty()) {
+        return Optional.empty();
+    }
+    return Optional.of(new MeasurementRepository(jdbcUrl));
+}
+```
+
+now REFACTORing the wire up code with this one
+
+```java
+@Test
+public void currentTemperatureInCelsiusShouldPersistTemperatureInformationWhenPostgresUrlIsSetInEnvironment() {
+    WeatherAPI weatherAPI = mock(WeatherAPI.class);
+    MeasurementRepository measurementRepository = mock(MeasurementRepository.class);
+    Weather weather = new Weather(weatherAPI, Optional.of(measurementRepository));
+    when(weatherAPI.getCurrentWeather("chennai")).thenReturn(new CurrentWeather(30));
+
+    weather.currentTemperatureInCelsius("chennai");
+
+    verify(measurementRepository).saveMeasurement(any(TemperatureMeasurement.class));
+}
+```
+
+```java
+public class Weather {
+
+    private final WeatherAPI weatherAPI;
+    private final Optional<MeasurementRepository> measurementRepository;
+
+    public Weather(WeatherAPI weatherAPI, Optional<MeasurementRepository> measurementRepository) {
+        this.weatherAPI = weatherAPI;
+        this.measurementRepository = measurementRepository;
+    }
+
+    public Optional<Integer> currentTemperatureInCelsius(String location) {
+        if (location == null || location.equals("")) {
+            return Optional.empty();
+        }
+        CurrentWeather currentWeather = weatherAPI.getCurrentWeather(location);
+        this.measurementRepository.ifPresent(repo -> {
+            repo.saveMeasurement(new TemperatureMeasurement(ZonedDateTime.now(), currentWeather.getTemperatureInCelsius()));
+        });
+        return Optional.of(currentWeather.getTemperatureInCelsius());
+    }
+
+}
+```
+
+And the main wireup
+
+```java
+public class App {
+    public static void main(String[] args) {
+        if(args.length == 0){
+            return;
+        }
+        Weather weather = new Weather(new WttrClient("http://wttr.in"), MeasurementRepository.fromJdbcUrl(getPostgresJdbcUrl()));
+        Optional<Integer> temperature = weather.currentTemperatureInCelsius(args[0]);
+        temperature.ifPresent(System.out::println);
+    }
+
+    private static String getPostgresJdbcUrl() {
+        String postgresJdbcUrl = System.getProperty("POSTGRES_JDBC_URL", System.getenv("POSTGRES_JDBC_URL"));
+        return Optional.ofNullable(postgresJdbcUrl).orElse("");
+    }
+}
+```
+
+Now that the app is working and it is self testing in nature we can refactor whatever we want with great confidence
+that it won't break the system! Thanks the main crux!
+
+That's all folks :-)
