@@ -30,7 +30,6 @@ public class WeatherTest {
 
 ```java
 public class Weather {
-
     public Optional<Integer> currentTemperatureInCelsius(String location) {
         return Optional.empty();
     }
@@ -62,3 +61,32 @@ public class Weather {
     }
 }
 ```
+
+### Step 3: When valid location is given
+
+```java
+@Test
+public void testCurrentTemperatureInCelsiusShouldReturnTemperatureInCelsiusWhenLocationIsGiven(){
+    Weather weather = new Weather();
+
+    Optional<Integer> temperature = weather.currentTemperatureInCelsius("chennai");
+
+    assertEquals(30, temperature.get());
+}
+```
+
+The above test will go to RED with the following error 
+
+```java
+java.util.NoSuchElementException: No value present
+```
+
+Now here comes the implementation thought process, for the `currentTemperatureInCelsius` method to return the temperature
+value it should talk to an API which gives it that value, we actually dont have the API yet so what do we do? 
+
+> we fake it till we make it!
+
+yes you heard it right, this is the exact thought process which exactly what drives the design 
+of the app from the ground up we call this "Test Driven Design"!.
+
+So lets start faking!
