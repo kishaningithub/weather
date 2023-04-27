@@ -539,7 +539,7 @@ public class App {
 }
 ```
 
-Now that the app is working and it is self testing in nature we can refactor whatever we want with great confidence
-that it won't break the system! Thanks the main crux!
+If you notice apart from the app being working it is also "self-testing" hence we can refactor whatever we want
+with great confidence that it won't break the system! That's the main crux!
 
 That's all folks :-)
