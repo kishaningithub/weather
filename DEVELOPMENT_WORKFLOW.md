@@ -318,3 +318,67 @@ These 3 form what is called the [test pyramid](https://martinfowler.com/bliki/Te
 ╱   Unit     ╲
 ──────────────
 ```
+
+## Requirement 2 - Store the results in postgres if enabled via environment
+
+So far we have been doing outside in tdd (mostly) now we will do inside out tdd.
+
+here we will first create a measurementRepository layer.
+
+To write the tests for this we need a running postgres instance but installing postgres on the system where the
+tests are running beforehand will lead to complexities for the development team and also for the CI pipelines.
+
+So we will leverage the power of [testcontainers](https://www.testcontainers.org/) library which in turn leverages the
+power of [docker](https://www.docker.com/). For connecting to database we will be using [jdbi](https://jdbi.org/)
+
+### Step 1 - Create a repository for storing current temperature measurements
+
+So as always lets start with a test
+
+```java
+@Testcontainers
+public class MeasurementRepositoryTest {
+
+    @Container
+    public PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(DockerImageName.parse("postgres:15.2-alpine"));
+
+    @Test
+    public void saveMeasurementShouldPersistCurrentTemperatureWithTime() throws InterruptedException {
+        Jdbi jdbi = Jdbi.create(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        jdbi.useHandle(handle -> handle.execute("create table temperature_measurements(measurement_time timestamptz, temperature_in_celsius integer)"));
+        TemperatureMeasurement measurement = new TemperatureMeasurement(ZonedDateTime.now(), 30);
+        MeasurementRepository measurementRepository = new MeasurementRepository(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+
+        measurementRepository.saveMeasurement(measurement);
+
+        jdbi.useHandle(handle -> {
+            TemperatureMeasurement actual = handle.createQuery("select * from temperature_measurements")
+                    .mapToBean(TemperatureMeasurement.class)
+                    .first();
+            assertEquals(measurement, actual);
+        });
+    }
+}
+```
+
+let's make it GREEN and refactor
+
+```java
+public class MeasurementRepository {
+
+    private final Jdbi jdbi;
+
+    public MeasurementRepository(String jdbcUrl, String username, String password) {
+        this.jdbi = Jdbi.create(jdbcUrl, username, password);
+    }
+
+    public void saveMeasurement(TemperatureMeasurement measurement) {
+        jdbi.useHandle(handle -> handle
+                .createUpdate("insert into temperature_measurements(measurement_time, temperature_in_celsius) values (:measurementTime, :temperatureInCelsius)")
+                .bindBean(measurement)
+                .execute());
+    }
+}
+```
+
+
