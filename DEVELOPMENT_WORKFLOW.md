@@ -148,6 +148,101 @@ public Optional<Integer> currentTemperatureInCelsius(String location) {
 }
 ```
 
-Okie now we have a working weather class, on to the API!
+Ok now we have a working weather class, on to the API!
 
 
+### Step 4: Create an API implementation
+
+For this we need to choose a provider which will give us the current weather information.
+
+For this project i have chosen this API which gives me the info I need and is simple, free and open source.
+
+```bash
+curl 'wttr.in/chennai?format=j1'
+```
+
+let's start with the test. For argument’s sake assume this api will charge us for every call and if we write a
+test which directly this API and every team member and CI pipeline runs this our monthly bill is going to shoot up
+so in order to address this concern and still have the safety net of automated tests we need a server which mimics 
+wttr.in
+
+for this purpose we will be using [wiremock](https://wiremock.org/)
+
+so lets import it
+
+```xml
+<dependency>
+  <groupId>com.github.tomakehurst</groupId>
+  <artifactId>wiremock-jre8</artifactId>
+  <version>2.35.0</version>
+  <scope>test</scope>
+</dependency>
+```
+
+and write the test which defines the design like before
+
+```java
+@WireMockTest
+public class WttrClientTest {
+    @Test
+    public void fetchCurrentWeatherInfo(WireMockRuntimeInfo wmRuntimeInfo) {
+        stubFor(get(urlPathEqualTo("/chennai"))
+                .withQueryParam("format", equalTo("j1"))
+                .willReturn(aResponse().withBodyFile("wttrResponse.json")));
+        WttrClient client = new WttrClient(wmRuntimeInfo.getHttpBaseUrl());
+
+        CurrentWeather actualWeather = client.getCurrentWeather("chennai");
+
+        CurrentWeather expectedWeather = new CurrentWeather(28);
+        assertEquals(expectedWeather, actualWeather);
+    }
+}
+```
+
+To pass this test we need to make a http call to the given URL. For that we will be using [unirest](https://kong.github.io/unirest-java/)
+
+```java
+public class WttrClient implements WeatherAPI {
+    private final String baseUrl;
+
+    public WttrClient(String baseUrl) {
+        this.baseUrl = baseUrl;
+    }
+
+    @Override
+    public CurrentWeather getCurrentWeather(String location) {
+        HttpResponse<WttrResponse> wttrResponse = Unirest.get(this.baseUrl + "/{location}")
+                .routeParam("location", location)
+                .queryString("format", "j1")
+                .withObjectMapper(new JacksonObjectMapper())
+                .asObject(WttrResponse.class);
+
+        String temperatureInCelsius = wttrResponse.getBody().getCurrentCondition().get(0).getTemperatureInCelsius();
+
+        return new CurrentWeather(Integer.parseInt(temperatureInCelsius));
+    }
+}
+```
+
+If you notice above i have also generated POJO classes to easily map the JSON response.
+
+Now the test is GREEN! Let's REFACTOR!
+
+The refactor i can think of is in terms of package structure as we now have significant code for wttr implementation where
+i move wttr code into its specific package
+
+```bash
+$ tree
+.
+└── org
+    └── example
+        ├── CurrentWeather.java
+        ├── Weather.java
+        ├── WeatherAPI.java
+        └── wttr
+            ├── CurrentCondition.java
+            ├── WttrClient.java
+            └── WttrResponse.java
+
+4 directories, 6 files
+```
