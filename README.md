@@ -25,4 +25,4 @@ $ java -jar target/*-shaded.jar chennai
 ## Development process
 
 This app was built fully following the TDD process, step by step
-explanation on how this app was developed can be found [here](DEVELOPMENT_PROCESS.md)
+explanation on how this app was developed can be found [here](DEVELOPMENT_WORKFLOW.md)
