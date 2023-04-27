@@ -228,7 +228,7 @@ If you notice above i have also generated POJO classes to easily map the JSON re
 
 Now the test is GREEN! Let's REFACTOR!
 
-The refactor i can think of is in terms of package structure as we now have significant code for wttr implementation where
+The refactor I can think of is in terms of package structure as we now have significant code for wttr implementation where
 i move wttr code into its specific package
 
 ```bash
@@ -245,4 +245,76 @@ $ tree
             └── WttrResponse.java
 
 4 directories, 6 files
+```
+
+### Step 5: Create the CLI interface
+
+Let's start with a test as usual
+
+```java
+@Test
+public void testCliInterfaceShouldGiveTheTemperatureForTheGivenLocation() {
+    ByteArrayOutputStream result = new ByteArrayOutputStream();
+    System.setOut(new PrintStream(result));
+
+    App.main(new String[]{"chennai"});
+
+    int actualTemperature = Integer.parseInt(result.toString().trim());
+    assertTrue(actualTemperature >= 20 && actualTemperature <= 55 );
+}
+```
+
+make the test pass
+
+```java
+public class App {
+    public static void main(String[] args) {
+        Weather weather = new Weather(new WttrClient("http://wttr.in"));
+
+        Optional<Integer> temperature = weather.currentTemperatureInCelsius(args[0]);
+
+        temperature.ifPresent(System.out::println);
+    }
+}
+```
+
+if you notice above we are doing `args[0]` yuck! what if user did not pass any arg? lets handle that
+
+```java
+@Test
+public void testCliInterfaceShouldNotFailIfNoInputIsGiven() {
+    assertDoesNotThrow(() -> App.main(new String[]{}));
+}
+```
+
+```java
+public class App {
+    public static void main(String[] args) {
+        if(args.length == 0){
+            return;
+        }
+        Weather weather = new Weather(new WttrClient("http://wttr.in"));
+        Optional<Integer> temperature = weather.currentTemperatureInCelsius(args[0]);
+        temperature.ifPresent(System.out::println);
+    }
+}
+```
+
+If you noticed about we have 3 different types of tests
+
+1. Unit tests (`WeaterTest.java`)
+2. Integration tests (`WttrClientTest.java`)
+3. End-To-End tests (`AppTest.java`)
+
+These 3 form what is called the [test pyramid](https://martinfowler.com/bliki/TestPyramid.html)
+
+```
+      ╱╲
+  End-to-End
+    ╱────╲
+   ╱ Inte-╲
+  ╱ gration╲
+ ╱──────────╲
+╱   Unit     ╲
+──────────────
 ```
