@@ -11,7 +11,9 @@ Build a weather cli app which upon receiving the name of the city should give th
 
 As usual, lets start with a test!
 
-Step 1: Start with the boundary case (i.e. where a location is not given), this is how it looks after the RED, GREEN, REFACTOR cycle.
+### Step 1: Start with the boundary case (i.e. where a location is not given)
+
+this is how it looks after the RED, GREEN, REFACTOR cycle.
 
 ```java
 public class WeatherTest {
@@ -35,4 +37,28 @@ public class Weather {
 }
 ```
 
+### Step 2: Boundary case 2 - location is null
 
+this is how it looks after the RED, GREEN, REFACTOR cycle.
+
+```java
+public class WeatherTest {
+    @ParameterizedTest
+    @NullAndEmptySource
+    public void testCurrentTemperatureInCelsiusShouldReturnEmptyWhenLocationIsEmpty(String location) {
+        Weather weather = new Weather();
+
+        Optional<Integer> temperature = weather.currentTemperatureInCelsius(location);
+
+        assertEquals(Optional.empty(), temperature);
+    }
+}
+```
+
+```java
+public class Weather {
+    public Optional<Integer> currentTemperatureInCelsius(String location) {
+        return Optional.empty();
+    }
+}
+```
